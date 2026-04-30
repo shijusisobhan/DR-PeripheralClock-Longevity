@@ -110,3 +110,124 @@ D1<-as.data.frame(bwnet$colors)
 
 #write.csv(D1, "WGCNA_module_LC25_batch_corrected_RUGv_k_2.csv")
 
+
+#------------------------------------------------------------------------------------------------
+  # MDC analysis
+#----------------------------------------------------------------------------------------------
+
+HC25_expr<-TPM[,c(1:24)]
+LC25_expr<-TPM[,c(25:48)]
+
+
+# -------------------------------
+# Step 2: Compute adjacency matrices
+# -------------------------------
+# Use same soft-threshold power as LC25 WGCNA
+softPower <- 18  # replace with your chosen value
+
+adj_LC25 <- adjacency(t(LC25_expr), power = softPower, type = "signed")
+adj_HC25 <- adjacency(t(HC25_expr), power = softPower, type = "signed")
+
+# -------------------------------
+# Step 3: Compute intramodular connectivity for each gene
+# -------------------------------
+
+
+moduleColors<-D1$`bwnet$colors`
+names(moduleColors)<-rownames(D1)
+
+k_LC25 <- intramodularConnectivity(adj_LC25, moduleColors)
+k_HC25 <- intramodularConnectivity(adj_HC25, moduleColors)
+
+# Extract "kWithin" (connectivity within module)
+k_LC25_within <- k_LC25$kWithin
+k_HC25_within <- k_HC25$kWithin
+names(k_LC25_within) <- rownames(k_LC25)
+names(k_HC25_within) <- rownames(k_HC25)
+
+
+
+# -------------------------------
+# Step 5: Compute module-level MDC (median kDiff)
+# -------------------------------
+moduleList <- unique(moduleColors)
+
+moduleMDC <- sapply(moduleList, function(mod){
+  # Get genes in this module
+  genes <- names(moduleColors)[moduleColors == mod]
+  
+  # Subset connectivity vectors using exact gene names
+  mean(k_LC25_within[genes]) / mean(k_HC25_within[genes])
+})
+
+# moduleMedC now has your MedC per module
+# Interpretation:
+#  MedC > 0 : module stronger in LC25
+#  MedC < 0 : module stronger in HC25
+
+
+# -------------------------------
+# Step 4: Permutation for empirical null
+# -------------------------------
+nPerm <- 1000
+set.seed(123)
+
+permMDC <- matrix(NA, nrow = nPerm, ncol = length(moduleList))
+colnames(permMDC) <- moduleList
+
+all_expr <- cbind(LC25_expr, HC25_expr)  # combine all samples
+
+for (i in 1:nPerm){
+  # Shuffle sample labels
+  perm_labels <- sample(ncol(all_expr))
+  perm_LC <- all_expr[, perm_labels[1:24]]
+  perm_HC <- all_expr[, perm_labels[25:48]]
+  
+  # Compute adjacency
+  perm_adj_LC <- adjacency(t(perm_LC), power = softPower, type = "signed")
+  perm_adj_HC <- adjacency(t(perm_HC), power = softPower, type = "signed")
+  
+  # Intramodular connectivity
+  perm_k_LC <- intramodularConnectivity(perm_adj_LC, colors = moduleColors)$kWithin
+  perm_k_HC <- intramodularConnectivity(perm_adj_HC, colors = moduleColors)$kWithin
+  names(perm_k_LC) <- rownames(perm_adj_LC)
+  names(perm_k_HC) <- rownames(perm_adj_HC)
+  
+  # Compute MDC per module (ratio)
+  for (mod in moduleList){
+    genes <- names(moduleColors)[moduleColors == mod]
+    permMDC[i, mod] <- mean(perm_k_LC[genes]) / mean(perm_k_HC[genes])
+  }
+}
+
+# -------------------------------
+# Step 5: Compute FDR (q-values)
+# -------------------------------
+empiricalP <- sapply(moduleList, function(mod){
+  if (moduleMDC[mod] > 1){
+    # Gain of connectivity
+    mean(permMDC[,mod] >= moduleMDC[mod])
+  } else {
+    # Loss of connectivity
+    mean(permMDC[,mod] <= moduleMDC[mod])
+  }
+})
+
+# FDR correction
+qValues <- p.adjust(empiricalP, method = "fdr")
+
+# -------------------------------
+# Step 6: Compile results
+# -------------------------------
+MDC_results <- data.frame(
+  Module = moduleList,
+  MDC = moduleMDC,
+  pValue = empiricalP,
+  qValue = qValues
+)
+
+# Interpretation:
+# MDC > 1 & q < 0.05 -> module gains connectivity in LC25
+# MDC < 1 & q < 0.05 -> module loses connectivity in LC25 (stronger in HC25)
+#write.csv(MDC_results, 'MDC_result_BatchCorrected_TPM_K2.csv')
+
