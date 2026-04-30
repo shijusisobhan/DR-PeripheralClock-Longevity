@@ -1,6 +1,7 @@
 
 rm(list=ls())
-# Libraries
+
+# Load required Libraries
 library(EDASeq)
 library(RUVSeq)
 library(DESeq2)
