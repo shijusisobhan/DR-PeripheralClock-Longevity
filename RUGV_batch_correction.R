@@ -5,45 +5,49 @@ library(EDASeq)
 library(RUVSeq)
 library(DESeq2)
 
-setwd('C:/Users/shijusis/OneDrive - Michigan Medicine/Desktop/Shiju_sisobhan/RNA sequencing/Drosophila/Fat body data/FB_old/FB_old_corrected/FB_old_paper/Kallisto_TPM')
+#setwd('C:/Users/shijusis/OneDrive - Michigan Medicine/Desktop/Shiju_sisobhan/GitHub_folder/DR-PeripheralClock-Longevity/Data')
 
+#--------------------------------------------------------------------------------------
+# load  TPM, estimated_count, and Average gene length data
 
+df_TPM<-read.csv("../Data/TPM_FB_HC25_LC25.csv")
+df_est_count<-read.csv("../Data/Estimated_count_FB_HC25_LC25.csv")
+gene_lengths_df<-read.csv('../Data/Average_gene_length_Fatbody.csv', row.names = 1)
 
-df<-read.csv("TPM_FB_HC25_LC25.csv")
+# df_TPM<-read.csv("TPM_FB_HC25_LC25.csv")
+# df_est_count<-read.csv("Estimated_count_FB_HC25_LC25.csv")
+# gene_lengths_df<-read.csv('Average_gene_length_Fatbody.csv', row.names = 1)
+#--------------------------------------------------------------------------
 
-
-
-# Assume your data frame is called df
-# First column is gene names, the remaining 24 columns are samples
+# Assume your data frame is called df_TPM
+# First column is gene names, the remaining 48 columns are samples 24 HC and 24 LC
 
 #-------------------------------------------------------------------------------
-# Subset only the numeric sample columns
+# Subset HC (control) and LC (Diet-Restrict) sample columns
 # Filter rows
+# #Keep the column which have TPM >1 in more than 60% of sample (exclude TPM <1 in more than 40% of sample)
+
 threshold <- 1
-est_HC <- df[, 1:25]
 
-#Keep the column which have count >5 in more than 60% of sample (exclude cont <5 in more than 40% of sample)
-HC_filter <- est_HC[rowSums(est_HC < threshold) <= 0.4 * ncol(est_HC), ]
+# Subset only the HC
+TPM_HC <- df_TPM[, 1:25]
+HC_filter <- TPM_HC[rowSums(TPM_HC < threshold) <= 0.4 * ncol(TPM_HC), ]
 
 
-# Subset only the numeric sample columns
-est_LC <- df[, c(1,26:49)]
-
-LC_filter <- est_LC[rowSums(est_LC < threshold) <= 0.4 * ncol(est_LC), ]
+# Subset only the LC
+TPM_LC <- df_TPM[, c(1,26:49)]
+LC_filter <- TPM_LC[rowSums(TPM_LC < threshold) <= 0.4 * ncol(TPM_LC), ]
 
 
 #--------------------------------------------------------------------------------------------
 
 # find the union of genes
-#Common_gene<-intersect(HC_filter$ext_gene, LC_filter$ext_gene) # Intial filtering is over
-
 Common_gene<-union(HC_filter$ext_gene, LC_filter$ext_gene) # Intial filtering is over
 #--------------------------------------------------------------------------------------------
 
 # Filtering and exploratory data analysis
 
-df<-read.csv("Estimated_count_FB_HC25_LC25.csv")
-counts<-df[which(df$ext_gene %in% Common_gene),]
+counts<-df_est_count[which(df_est_count$ext_gene %in% Common_gene),]
 counts<-counts[!duplicated(counts$ext_gene), ]
 rownames(counts)<-counts[,1]
 counts<-counts[,-1]
@@ -61,7 +65,6 @@ pheno <- data.frame(condition=condition,time=factor(timepoints), batch=batch)
 rownames(pheno) <- colnames(counts)
 
 set <- newSeqExpressionSet(counts=counts, phenoData=pheno)
-
 
 #--------------------------------------------------
 # 3. Use edgeR to run first-pass DE analysis
@@ -96,9 +99,11 @@ set_uq <- betweenLaneNormalization(set_ruv, which="upper")
 #--------------------------------------------------
 corrected_counts <- normCounts(set_uq)
 
-#write.csv(corrected_counts, "Batch_corrected_est_Count_RUVg_shiju_K_2.csv")
+#------------------------------------------------------------------------
+# 7. Calculate batch corrected TPM from batch corrected estimated count
+# Corrected TPM=(Corrected counts)/(Gene length)× 10^6
+#-----------------------------------------------------------------------
 
-gene_lengths_df<-read.csv('Average_gene_length_Fatbody.csv', row.names = 1)
 gene_lengths_filtered<-gene_lengths_df[rownames(gene_lengths_df) %in% rownames(corrected_counts),,drop=F]
 #o guarantee matching order with corrected_counts
 gene_lengths_filtered <- gene_lengths_df[rownames(corrected_counts), , drop = FALSE]
@@ -109,7 +114,7 @@ rate <- sweep(corrected_counts, 1, gene_lengths_filtered[,1], FUN = "/")
 # Normalize per sample to sum to 1 million (TPM)
 Corrected_tpm <- sweep(rate, 2, colSums(rate), FUN = "/") * 1e6
 
-write.csv(Corrected_tpm, "Batch_corrected_TPM_RUVg_shiju_K_2_neg_1000.csv")
+#write.csv(Corrected_tpm, "Batch_corrected_TPM_RUVg_shiju_K_2_neg_1000.csv")
 
 
 
