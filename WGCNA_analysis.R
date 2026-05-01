@@ -8,6 +8,7 @@ library(DESeq2)
 library(GEOquery)
 library(tidyverse)
 library(gridExtra)
+library(pheatmap)
 allowWGCNAThreads() 
 
 # Gene expression matrix and format to WGCNA program -LC data (Diet restricted)
@@ -95,6 +96,32 @@ plotDendroAndColors(
   hang = 0.03,
   addGuide = TRUE,
   guideHang = 0.05 )
+
+
+# Module eigengenes
+MEs <- bwnet$MEs
+MEcor <- cor(MEs)
+
+# Extract module colors (remove "ME" prefix)
+moduleColors <- substring(colnames(MEs), 3)
+
+# Create annotation for axes
+ann <- data.frame(Module = moduleColors)
+rownames(ann) <- colnames(MEs)
+
+# Plot
+pheatmap(MEcor,
+         clustering_method = "average",
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         display_numbers = FALSE,
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         annotation_row = ann,
+         annotation_col = ann,
+         annotation_colors = list(Module = setNames(moduleColors, moduleColors)),
+         border_color = NA,   # removes grid lines
+         main = "Module Network Heatmap")
 
 
 # assign back original correlation
